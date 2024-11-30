@@ -1,0 +1,14 @@
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    ports:
+      - '${SURREALDB_PORT}:8000'
+    command:
+      - start
+      - --log=${SURREALDB_LOG_LEVEL}
+      - --user=${SURREALDB_USER}
+      - --pass=${SURREALDB_PASS}
+      - file:///data/database.db
+    restart: unless-stopped
+    volumes:
+      - ./surrealdb_data:/data
