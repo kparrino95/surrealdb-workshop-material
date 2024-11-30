@@ -1,0 +1,196 @@
+The best practice for selecting a single record or a range of records is using record IDs. This is because when using record IDs, we directly fetch the records from the key-value store, without doing a table scan. Making it orders of magnitude more performant than using the WHERE clause.
+
+-- Using omit
+SELECT * OMIT time FROM person:01FTP9H7BG8VDANQPN8J3Y857R;
+
+-- Not using omit
+SELECT id, first_name, last_name, name, email, phone, address,
+address_history, payment_details
+FROM person:01FTP9H7BG8VDANQPN8J3Y857R;
+Run in Surrealist
+SurrealQL also makes it easy select what you need from a record, such as in cases where you want to select everything, but omit certain fields from a record.
+
+Working with objects and arrays
+The SELECT statement in SurrealQL is extremely flexible, with many advanced features. You can find a more comprehensive list of these features in our documentation, but for now, let’s look at a few examples of how to work with objects and arrays.
+
+-- Select the first colour in the colours array
+SELECT colours[0]
+FROM product:01FSXKCPVR8G1TVYFT4JFJS5WB;
+
+-- Select updated_at from the time object
+SELECT time.updated_at
+FROM product:01FSXKCPVR8G1TVYFT4JFJS5WB;
+
+-- Select the entire array of objects
+SELECT images
+FROM product:01FSXKCPVR8G1TVYFT4JFJS5WB;
+
+-- Select all the URLs in the images array of objects
+SELECT images.*.url
+FROM product:01FSXKCPVR8G1TVYFT4JFJS5WB;
+
+-- Select the first URL in the images array of objects
+SELECT images[0].url
+FROM product:01FSXKCPVR8G1TVYFT4JFJS5WB;
+Run in Surrealist
+For selecting and traversing objects and arrays and arrays of objects, we can use the dot and bracket notation.
+
+We can select the first colour in the colours array using colours[0]
+We select updated_at from the time object using time.updated_at
+For selecting the first URL in the images array of objects, we use a combination of both, images[0].url
+object and array functions
+-- Returns the unique items in an array
+SELECT array::distinct(sub_category) AS unique_sub_cat  FROM product
+GROUP ALL;
+
+-- Flattens and returns the unique items in an array
+SELECT array::group(details) AS unique_details
+FROM product
+GROUP ALL;
+Run in Surrealist
+Object and array functions are useful for many things such as deduplicating results similar to SELECT DISTINCT in most SQL-dialects. There are two ways of doing this in SurrealQL:
+
+Using array::distinct, if the fields are not nested.
+Using array::group, if you’re selecting from nested arrays and need to flatten them.
+-- Select the product name and the number of colours it has
+SELECT
+	name,
+	array::len(colours) AS number_of_colours
+FROM product;
+
+-- Select the person name and the number of address fields
+SELECT
+	name,
+	object::len(address) AS number_of_address_fields
+FROM person;
+Run in Surrealist
+Importantly, there is way to count things without using aggregate functions, if what you’re counting is either an array or object. As then we can use array::len or object::len and get both aggregated data and non-aggregated data in one query.
+
+You can find many more useful functions in our documentation.
+
+Tempfiles
+SELECT count() AS number_of_orders,
+time::format(time.created_at, "%Y-%m") AS month,
+math::sum(price * quantity) AS sum_sales, currency
+FROM order
+GROUP BY month, currency
+ORDER BY month DESC
+TEMPFILES;
+Run in Surrealist
+There might be times where you want to run large analytical that have the potential to cause an out-of-memory error (OOM). That is where the TEMPFILES clause comes in, allowing you to process the query in temporary files on disk rather than in memory. This significantly reduces memory usage, though it’s likely to also result in slower performance.
+
+Using LET parameters and subqueries
+-- Find the name of the product where the price is higher than the avg price
+SELECT name from product
+WHERE [price] > (
+	SELECT math::mean(price) AS avg_price FROM product GROUP ALL
+	).avg_price;
+Run in Surrealist
+Subqueries function in similar ways as you’d expect from SQL-dialects, such as using them in the SELECT, FROM or WHERE clauses. We’ll cover them in more detail in part 2 on relational style joins.
+
+-- Using the let statement to store the query result
+LET $avg_price = (
+	SELECT math::mean(price) AS avg_price FROM product GROUP ALL
+	).avg_price;
+
+-- Find the name of the product where the price is higher than the avg price
+SELECT name from product
+WHERE [price] > $avg_price;
+Run in Surrealist
+An alternative to using subqueries is often through using common table expressions (CTEs).
+
+SurrealQL does not use typical CTEs, but we can use the LET statement to cover those use cases.
+
+LET $field_name = "name";
+LET $table = "product";
+LET $id = "01FSXKCPVR8G1TVYFT4JFJS5WB";
+
+RETURN $table;
+
+SELECT type::field($field_name)
+FROM type::thing($table, $id)
+Run in Surrealist
+We can also use the LET statement to parameterise our queries, either directly as static values, or dynamic values in combination with the type functions.
+
+The LET statement can do a lot more than what we’ve covered here, as you can use it in almost every statement in SurrealQL and you can see more examples of that in our documentation.
+
+How SELECT compares to RETURN
+-- Return a number
+RETURN 1337; 
+SELECT * FROM ONLY 1337;
+Run in Surrealist
+Aside from the SELECT statement, you can also use the RETURN statement for reading data.
+
+With it, you can RETURN any value, from numbers and strings to entire code blocks and query results.
+
+In many ways, it’s similar to the SELECT statement but can offer a more ergonomic way of returning values. Such as in our example where we can return the value directly instead of having to use SELECT * FROM ONLY to return ONLY the value.
+
+-- Return a select statement
+RETURN (SELECT name FROM person);
+Run in Surrealist
+When it comes to records, you can RETURN the result of any SELECT statement.
+
+-- Return a record
+RETURN person:01FTP9H7BG8VDANQPN8J3Y857R.*;
+SELECT * FROM ONLY person:01FTP9H7BG8VDANQPN8J3Y857R;
+
+-- Return a field value inside the record
+RETURN person:01FTP9H7BG8VDANQPN8J3Y857R.name;
+SELECT VALUE name FROM ONLY person:01FTP9H7BG8VDANQPN8J3Y857R;
+Run in Surrealist
+However, on its own, RETURN only allows for selecting a single record or just a single value in that record. This can also be accomplished with a combination of FROM ONLY and SELECT VALUE using the SELECT statement. I’d encourage you to experiment with the queries, removing the ONLY and or VALUE clause to see how the result changes.
+
+How they are different
+SELECT
+    product_name,
+    count() AS number_of_orders
+FROM order
+GROUP BY product_name
+ORDER BY number_of_orders DESC
+LIMIT 10;
+Run in Surrealist
+The SELECT statement, as we’ve seen, has many ways of working data that is not just about returning values like the RETURN statement.
+
+-- Start transaction
+BEGIN;
+-- Setup accounts
+CREATE account:one SET balance = 135605.16;
+CREATE account:two SET balance = 91031.31;
+
+-- Move money
+UPDATE account:one SET balance += 300.00;
+UPDATE account:two SET balance -= 300.00;
+
+-- Return new account balances
+RETURN {
+    account_one_balance: account:one.balance,
+    account_two_balance: account:two.balance
+};
+COMMIT;
+-- Finish transaction
+Run in Surrealist
+Unlike the SELECT statement, the RETURN statement has a special purpose in code blocks, functions and transactions for returning the final results.
+
+You can see more examples of how to use the RETURN statement in code blocks, functions and transactions in our documentation.
+
+Going real-time with LIVE SELECT
+LIVE SELECT allows us to unlock streaming data magic, through what we call Live Queries.
+
+Live Queries read data in real-time, as changes are made to the underlying table.
+
+-- Start a Live Query
+LIVE SELECT * from product;
+
+-- Stop a Live Query by specifying its uuid
+KILL u"57f4964c-006f-463b-a965-19a3cec330b9";
+
+-- Start a live query using JSON patch format
+LIVE SELECT DIFF from product;
+Run in Surrealist
+When you run the LIVE SELECT it will return a UUID, which is the Live Query Unique ID. The UUID is used to keep track of the various Live Queries you have running and to stop them using the KILL statement.
+
+Once you made changed to the table the Live Query is listening to, in our case the product table, you can see the live results updating.
+
+You can either receive the changes in our normal format or use the JSON PATCH format by specifying LIVE SELECT DIFF FROM product.
+
+You can see more details about Live Queries in our documentation.

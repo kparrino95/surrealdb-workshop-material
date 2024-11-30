@@ -1,0 +1,58 @@
+delete user, role;
+
+-- // Inserimento di dati fittizi
+UPSERT user:alessandro set name="Alessandro", Cognome="Rossi", eta=55, ruolo="junior developer";
+UPSERT user:kevin set name="Kevin", Cognome="Parrino", eta=55, ruolo="developer";
+UPSERT user:nicholas set name="Nicholas", Cognome="Mantovani", eta=54, ruolo="senior developer";
+UPSERT user:mirco set name="Mirco", Cognome="Scotti", eta=53, ruolo="software architect";
+UPSERT user:andrea set name="Andrea", Cognome="Cavalieri", eta=52, ruolo="enterprise architect";
+
+//Vediamo cosa abbiamo a db
+select * from user;
+
+
+// Verifichiamo i ruoli inseriti
+select array::distinct(ruolo) as ruoli from user group all;
+
+// Assegnamoli a una variabile ritornando il conteggio dei ruoli
+let $roles = select array::distinct(ruolo) as ruoli from user group all;
+let $roles = $roles.ruoli[0];
+
+-- // Verifichiamo quanti ruoli abbiamo
+return $roles.len();
+
+// Per ogni ruolo creiamo a database un record sulla tabella ruoli
+for $role in $roles {
+    upsert type::thing("role",$role) set role_name = $role;
+};
+
+
+// Ora mettiamoli in relazione
+relate role:`junior developer`->vuolediventare:1->role:developer;
+relate role:`developer`->vuolediventare:2->role:`senior developer`;
+relate role:`senior developer`->vuolediventare:3->role:`software architect`;
+relate role:`software architect`->vuolediventare:4->role:`enterprise architect`;
+
+
+// Vediamo ora la tabella dei ruoli
+select * from role;
+
+
+// Ora proviamo ad associare il ruolo ai nostri user
+for $user in (select * from user){
+    upsert $user set elaborated=true;
+    let $role = type::thing("role",$user.ruolo);
+    upsert $user set ruolo = $role;
+    relate $user->ricopreilruolodi->$role;
+};
+
+// Vediamo secondo i ruoli cosa vuole diventarere ad esempio uno junior dev
+select ruolo->vuolediventare->role.role_name[0][0] as vuolediventare, * from user:alessandro;
+
+// Vediamo chi ricopre il ruolo che vorrebbe il nostro junion dev
+select ruolo->vuolediventare->role<-ricopreilruolodi<-user.name from user:alessandro;
+
+// E se volessimo vedere tutti le coppie vicine?
+select name, ruolo->vuolediventare->role<-ricopreilruolodi<-user.name[0][0] as responsabile from user;
+
+

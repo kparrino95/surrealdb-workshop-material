@@ -1,0 +1,111 @@
+The RELATE statement
+SurrealDB introduces a new statement called RELATE using this three-part structure.
+
+Using the RELATE statement, we can create our primary relationships based on the major actions a person using our e-commerce store would take: wishlist, cart, order and review. These will serve as our edge tables.
+
+-- wishlist
+RELATE person:01GT2ZEF2G8AC8D7H7FMZ1ZYZ3 -> wishlist:ulid() -> product:01HGAR7A0R9BETTCMATM6SSXPT;
+
+-- cart
+RELATE person:01HBC4FGG0904R927Q82SVZ1JB -> cart:ulid() -> product:01GXRS3FZG8Y8SDBNHMC14N25X;
+
+-- order
+RELATE person:01GCSHZEP89F1B9T33Y4M9VA9J -> order:ulid() -> product:01H35P394G93AVCEF8KX59H5RY;
+
+-- review
+RELATE person:01FSZ7A4W888FAYSSP8T3NV3MX -> review:ulid() -> product:01GBE3CTMG93XBKM07CFH1S9S6;
+Run in Surrealist
+The RELATE statement works with one record ID at a time for each table.
+
+Here, we are taking an existing record ID from the person and product table. Then for the middle tables which are the edge tables.
+
+Those get created if they don’t already exist. We are also specifying that these new records should use a ULID as an ID.
+
+Once we run the RELATE statement, we’ll see two new fields: in and out.
+
+Now you might be wondering, when were these created since it didn’t seem like we specified them before. We did actually specify them using the RELATE statement because another way of looking at the semantic triple is in the three-part structure
+
+in → id → out
+Where the first node is called in, the edge is the id, and the second node is the out.
+
+Adding data to Edge Tables using SET and CONTENT
+What really sets SurrealDB apart from graph-only databases, is that our edges are also real tables, meaning that you can store information in them, which allows for even more flexible data models.
+
+-- set
+RELATE person:01GT2ZEF2G8AC8D7H7FMZ1ZYZ3 -> wishlist:ulid() -> product:01HGAR7A0R9BETTCMATM6SSXPT
+SET time.created_at = time::now();
+
+-- content
+RELATE person:01GFFXDCG89SAR3WM2SDV2E1RA -> order:ulid() -> product:01H35P394G93AVCEF8KX59H5RY
+CONTENT {
+    quantity: 2,
+    product_name: ->product.name,
+    price: ->product.price,
+    shipping_address: <-person.address
+};
+Run in Surrealist
+We can both create our order relationship and use it at the same time to fetch connected data from both the product and person tables.
+
+Notice that the direction of the arrow changes based on the table we are fetching from.
+
+Looking at the RELATE statement, we can see that we only specified one direction, going from person to order to product.
+
+However, the RELATE statement creates a bidirectional graph by default, meaning that even if we only specified Person → order → product, it will also do person ← order ← product.
+
+RELATE just two tables
+graph 2 tables
+So far we’ve been focusing on connecting three tables in our semantic triple, we can however use just two tables as well, by having the in and out be the same Record ID.
+
+RELATE product:01G0MW4VTG8QZR3A4BTEXHXWS7 -> product_sku:ulid() -> product:01G0MW4VTG8QZR3A4BTEXHXWS7;
+Run in Surrealist
+Inserting multiple relations
+There are two ways to INSERT multiple relations.
+
+INSERT RELATION INTO order [
+	{
+		id: order:01J9XESXSQ5S69ZCDMVGGFVQVQ,
+		in: person:01J9XESXSQ7NKPDSWZ4963QPP1,
+		out: product:01J9XESXSQK2078BKKJ7S6JPC2
+	},
+	{
+		id: order:01J9XESXSQ0XVDKQ86W943A97H,
+		in: person:01J9XESXSQTK65SKAWGZ6MNGP6,
+		out: product:01J9XESXSQFK0D4F49V2DWHQP3
+	},
+	{
+		id: order:01J9XESXSQAZPSGK6JH12FB72E,
+		in: person:01J9XESXSQ0S2384128FSBY6Q4,
+		out: product:01J9XESXSQ11KQYV9RP3SSR6ED
+	}
+]
+Run in Surrealist
+The first way is by using the RELATION clause on the INSERT statement. It works the same way a normal INSERT would, just with the in and out fields being required to specify the relationship.
+
+The second way is using parameters to do a cartesian product.
+
+LET $person = (SELECT VALUE id FROM person LIMIT 10);
+LET $product = (SELECT VALUE id FROM product LIMIT 10);
+
+RELATE $person->order->$product TIMEOUT 3s;
+Run in Surrealist
+This creates a relationship record for each combination of Record IDs. Such that if we have 10 records each in the person and product tables, we get 100 records in the order edge table.
+
+This should only be used with extreme caution as it can quickly use all your available resources, if allowed to, therefore it’s always good to add a TIMEOUT clause when using this.
+
+Graph CRUD operations
+We’ve already covered how to create graph relations, let’s now explore how to use them in the rest of our CRUD operations.
+
+SELECT
+    <-person.name AS person_name,
+    in.name,
+    ->product.seller,
+    out.seller
+FROM order LIMIT 4;
+
+UPDATE order
+SET shipping_address = <-person.address;
+
+DELETE order
+WHERE <-person.name ?= "Leoma Santiago"
+Run in Surrealist
+You can use graph relations in any CRUD operation either by using the arrow syntax <- -> or dot notation using in and out. Both are valid ways of querying the data.
